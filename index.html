@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meus Jogos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root{--pitch:#111;--chalk:#f4f4f4;--ink:#161616;--red:#b5201e;--win:#3f7a56;--draw:#c2a03c;--loss:#b5201e}
+  body{font-family:'Barlow',system-ui,sans-serif;background:var(--chalk);color:var(--ink)}
+  .disp{font-family:'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.01em}
+  .stub{position:relative;background:#fff;border-radius:10px;border-top:3px solid var(--c);box-shadow:0 1px 3px rgba(15,61,46,.15)}
+  .stub::before,.stub::after{content:"";position:absolute;top:58%;width:14px;height:14px;border-radius:50%;background:var(--chalk)}
+  .stub::before{left:-7px}.stub::after{right:-7px}
+  .stub .tear{border-top:2px dashed #d3dbd6;margin:0 14px}
+  .tab-on{color:var(--pitch);box-shadow:inset 0 -3px 0 var(--pitch)}
+  th{cursor:pointer;white-space:nowrap}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .snap{scroll-snap-type:x mandatory}.snap>*{scroll-snap-align:start}
+  :focus-visible{outline:3px solid #e9c46a;outline-offset:2px}
+</style>
+</head>
+<body class="min-h-screen">
+
+<header style="background:#fff;border-bottom:0" class="text-slate-900">
+  <div class="max-w-6xl mx-auto px-4 pt-5 pb-0">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <h1 class="disp text-4xl font-bold leading-none">Meus Jogos <span style="color:var(--pitch)">·</span> São Paulo</h1>
+        <p id="resumo" class="text-sm text-slate-600 mt-1">Carregando...</p>
+      </div>
+      <button id="reload" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-100" aria-label="Atualizar dados">Atualizar</button>
+    </div>
+    <nav class="flex gap-1 mt-5" role="tablist">
+      <button class="tab px-4 py-2.5 rounded-t-lg font-semibold text-sm tab-on" data-tab="t1" role="tab">Linha do tempo</button>
+      <button class="tab px-4 py-2.5 rounded-t-lg font-semibold text-sm text-slate-500" data-tab="t2" role="tab">Estatísticas</button>
+    </nav>
+  </div>
+</header>
+<div aria-hidden="true"><div style="height:3px;background:var(--red)"></div><div style="height:3px;background:#fff"></div><div style="height:3px;background:var(--pitch)"></div></div>
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+  <div id="msg" class="hidden mb-4 rounded-lg bg-amber-100 text-amber-900 px-4 py-3 text-sm"></div>
+
+  <!-- ABA 1 -->
+  <section id="t1" class="space-y-8">
+    <button id="boxArt" class="w-full text-left rounded-xl p-4 bg-white shadow-sm flex items-center justify-between gap-3" style="border-left:4px solid var(--red)"></button>
+    <div>
+      <h2 class="disp text-2xl font-bold mb-3">Últimos 10 jogos</h2>
+      <div id="ultimos" class="flex gap-3 overflow-x-auto snap pb-3 -mx-4 px-4"></div>
+    </div>
+
+    <div>
+      <h2 class="disp text-2xl font-bold mb-1">Neste dia</h2>
+      <p id="hojeLabel" class="text-sm text-slate-500 mb-3"></p>
+      <div id="nesteDia" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+    </div>
+
+    <div class="bg-white rounded-xl p-4 shadow-sm">
+      <h2 class="disp text-2xl font-bold mb-3">Retrospecto contra um adversário</h2>
+      <select id="selAdv" class="w-full sm:w-80 border border-slate-300 rounded-lg px-3 py-2 bg-white"></select>
+      <div id="retro" class="mt-4"></div>
+    </div>
+
+    <div class="bg-white rounded-xl p-4 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+        <h2 class="disp text-2xl font-bold">Todos os jogos</h2>
+        <input id="busca" type="search" placeholder="Buscar por time, estádio, campeonato, técnico..." class="w-full sm:w-96 border border-slate-300 rounded-lg px-3 py-2">
+      </div>
+      <div class="scroll-x"><table class="w-full text-sm" id="tabJogos"></table></div>
+      <div class="flex items-center justify-between mt-3 text-sm">
+        <button id="prev" class="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40">Anterior</button>
+        <span id="pagInfo"></span>
+        <button id="next" class="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40">Próxima</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ABA 2 -->
+  <section id="t2" class="hidden space-y-8">
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="disp text-xl font-bold mb-2">Vitórias, empates e derrotas</h3><div class="h-52"><canvas id="chVed"></canvas></div><div id="vedNums" class="grid grid-cols-3 text-center mt-3"></div></div>
+      <div class="bg-white rounded-xl p-4 shadow-sm md:col-span-2"><h3 class="disp text-xl font-bold mb-2">Aproveitamento por ano</h3><div class="h-64"><canvas id="chAno"></canvas></div></div>
+    </div>
+    <div id="curiosidades"></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="disp text-2xl font-bold mb-3">Estatísticas por ano</h3><div id="porAno" class="scroll-x"></div></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="disp text-2xl font-bold mb-3">Artilheiros</h3><div id="artilheiros"></div></div>
+    <div id="rankings" class="space-y-4"></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="disp text-2xl font-bold mb-3">Dias da semana</h3><div id="porDia" class="scroll-x"></div></div>
+  </section>
+</main>
+
+<div id="modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true">
+  <div class="bg-white w-full sm:max-w-xl max-h-[88vh] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 text-slate-900" style="background:#fff;border-bottom:4px solid var(--red)">
+      <button id="mBack" class="hidden text-sm border border-slate-300 rounded-lg px-2.5 py-1">Voltar</button>
+      <h3 id="mTitle" class="disp text-xl font-bold flex-1 truncate"></h3>
+      <button id="mClose" class="px-2 text-xl leading-none" aria-label="Fechar">&times;</button>
+    </div>
+    <div id="mBody" class="overflow-y-auto p-4"></div>
+  </div>
+</div>
+
+<script>
+// ============ CONFIG ============
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/SEU_ID_AQUI/pub?gid=0&single=true&output=csv';
+const PAGE_SIZE = 15;
+const MIN_JOGOS_RANKING = 3; // mínimo de jogos para técnico/companhia entrarem em "melhor aproveitamento"
+
+// Dados de exemplo, usados só enquanto CSV_URL não for trocado
+const DEMO = `Data,Time1,GP,GC,Time2,Result,Gol1,Gol2,Gol3,Gol4,Campeonato,Rodada/Fase,Estádio,C/F,Setor,Público,Observação,Classificado,Companhia,Técnico,País,Estado
+12/03/2022,São Paulo,2,1,Santos,V,Fulano,Ciclano,,,Paulistão,Rodada 10,Morumbi,C,Norte,40120,,,João,Técnico A,Brasil,SP
+05/10/2023,São Paulo,0,0,Palmeiras,E,,,,,Brasileirão,Rodada 28,Allianz Parque,F,Visitante,38000,,,Pedro,Técnico B,Brasil,SP
+14/10/2023,São Paulo,1,3,Flamengo,D,Fulano,,,,Brasileirão,Rodada 29,Maracanã,F,Visitante,55000,,,Pedro,Técnico B,Brasil,RJ
+14/10/2024,São Paulo,4,0,Santos,V,Fulano,Fulano,Ciclano,Beltrano,Copa do Brasil,Oitavas,Morumbi,C,Sul,43000,,Sim,João,Técnico B,Brasil,SP
+01/03/2025,São Paulo,3,2,Palmeiras,V,Ciclano,Fulano,Fulano,,Paulistão,Rodada 8,Morumbi,C,Norte,41000,,,João,Técnico A,Brasil,SP`;
+
+// ============ UTILS ============
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtD = d => d.toLocaleDateString('pt-BR');
+const fmtN = n => Number(n).toLocaleString('pt-BR');
+const pct = n => (isNaN(n) ? '–' : n.toFixed(1).replace('.', ',') + '%');
+const DIAS = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+const RC = {V:'var(--win)', E:'var(--draw)', D:'var(--loss)'};
+const RN = {V:'Vitória', E:'Empate', D:'Derrota'};
+const badge = r => `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] font-bold align-middle" style="background:${RC[r]}" title="${RN[r]}">${r}</span>`;
+
+function parseCSV(text){
+  const first = text.split('\n')[0];
+  const sep = (first.match(/;/g)||[]).length > (first.match(/,/g)||[]).length ? ';' : ',';
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (q){ if (c === '"'){ if (text[i+1] === '"'){ cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === sep){ row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r'){ if (c === '\r' && text[i+1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += c;
+  }
+  if (cur || row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+function parseDate(s){
+  s = (s||'').trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m){ let y = +m[3]; if (y < 100) y += 2000; return new Date(y, m[2]-1, +m[1]); }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? new Date(+m[1], m[2]-1, +m[3]) : null;
+}
+const toInt = v => { const n = parseInt(String(v||'').replace(/\D/g,''), 10); return isNaN(n) ? null : n; };
+
+function toGames(rows){
+  const h = rows[0].map(x => x.trim().toLowerCase());
+  const ix = n => h.indexOf(n.toLowerCase());
+  const g = (r, n) => (r[ix(n)] ?? '').trim();
+  return rows.slice(1).map(r => {
+    const d = parseDate(g(r,'Data')), gp = toInt(g(r,'GP')), gc = toInt(g(r,'GC'));
+    if (!d || gp === null || gc === null) return null;
+    return {
+      d, t1:g(r,'Time1'), gp, gc, t2:g(r,'Time2'),
+      r: gp > gc ? 'V' : gp < gc ? 'D' : 'E',
+      gols:['Gol1','Gol2','Gol3','Gol4'].map(k => g(r,k)).filter(Boolean),
+      camp:g(r,'Campeonato'), fase:g(r,'Rodada/Fase'), est:g(r,'Estádio'), cf:g(r,'C/F'),
+      setor:g(r,'Setor'), pub:toInt(g(r,'Público')), obs:g(r,'Observação'), clas:g(r,'Classificado'),
+      comp:g(r,'Companhia').split(/[,;\/]/).map(x => x.trim()).filter(Boolean),
+      tec:g(r,'Técnico'), pais:g(r,'País'), uf:g(r,'Estado')
+    };
+  }).filter(Boolean).sort((a,b) => b.d - a.d).map((x,i) => (x.id = i, x));
+}
+
+function stats(arr){
+  const s = {j:arr.length, v:0, e:0, d:0, gp:0, gc:0};
+  arr.forEach(x => { s[x.r.toLowerCase()]++; s.gp += x.gp; s.gc += x.gc; });
+  s.ap = s.j ? (s.v*3 + s.e) / (s.j*3) * 100 : NaN;
+  return s;
+}
+function groupBy(arr, fn){
+  const m = new Map();
+  arr.forEach(x => { [].concat(fn(x)).forEach(k => { if (k === '' || k == null) return; (m.get(k) || m.set(k, []).get(k)).push(x); }); });
+  return m;
+}
+const groupStats = (arr, fn) => [...groupBy(arr, fn)].map(([k, a]) => ({k, ...stats(a)}));
+
+// ============ ESTADO ============
+let G = [], page = 0, filtro = '';
+const rankSort = {};
+let charts = {};
+
+// ============ CARGA ============
+async function load(){
+  const msg = $('msg'); msg.classList.add('hidden');
+  try {
+    let text;
+    if (CSV_URL.includes('SEU_ID_AQUI')){
+      text = DEMO;
+      msg.textContent = 'Exibindo dados de exemplo. Troque a variável CSV_URL no código pelo link do seu CSV publicado.';
+      msg.classList.remove('hidden');
+    } else {
+      const res = await fetch(CSV_URL + (CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      text = await res.text();
+    }
+    G = toGames(parseCSV(text));
+    page = 0;
+    renderAll();
+  } catch (e){
+    msg.textContent = 'Não foi possível carregar a planilha (' + e.message + '). Confira se ela está publicada na web como CSV.';
+    msg.classList.remove('hidden');
+    $('resumo').textContent = 'Sem dados';
+  }
+}
+
+function renderAll(){
+  const s = stats(G);
+  $('resumo').textContent = `${s.j} jogos · ${s.v}V ${s.e}E ${s.d}D · ${pct(s.ap)} de aproveitamento`;
+  stack = []; drawModal(); buildScorers(); renderArtBox(); renderUltimos(); renderHoje(); renderAdv(); renderTabela();
+  if (!$('t2').classList.contains('hidden')) renderStats();
+}
+
+// ============ ABA 1 ============
+function stub(x){
+  return `<article class="stub shrink-0 w-64 sm:w-72 cursor-pointer" style="--c:${RC[x.r]}" data-game="${x.id}" role="button" tabindex="0">
+    <div class="px-4 pt-3 pb-3">
+      <div class="flex justify-between text-xs text-slate-500"><span>${fmtD(x.d)}</span><span class="font-semibold flex items-center gap-1">${badge(x.r)} ${RN[x.r]}</span></div>
+      <div class="disp text-xl font-bold leading-tight mt-2">${esc(x.t1)} <span class="text-2xl" style="color:${RC[x.r]}">${x.gp} × ${x.gc}</span> ${esc(x.t2)}</div>
+    </div>
+    <div class="tear"></div>
+    <div class="px-4 py-3 text-xs text-slate-600 space-y-0.5">
+      <div>${esc(x.camp)}${x.fase ? ' · ' + esc(x.fase) : ''}</div>
+      <div>${esc(x.est)}${x.pub ? ' · ' + fmtN(x.pub) + ' pessoas' : ''}</div>
+      ${x.comp.length ? `<div>Com ${esc(x.comp.join(', '))}</div>` : ''}
+    </div></article>`;
+}
+function renderUltimos(){ $('ultimos').innerHTML = G.slice(0,10).map(stub).join('') || '<p class="text-slate-500">Nenhum jogo encontrado.</p>'; }
+
+function renderHoje(){
+  const t = new Date();
+  $('hojeLabel').textContent = `Jogos em ${t.getDate()} de ${t.toLocaleDateString('pt-BR',{month:'long'})}`;
+  const l = G.filter(x => x.d.getDate() === t.getDate() && x.d.getMonth() === t.getMonth()).sort((a,b) => b.d - a.d);
+  $('nesteDia').innerHTML = l.length ? l.map(x => `
+    <div class="bg-white rounded-xl p-4 shadow-sm border-l-2 cursor-pointer" style="border-color:${RC[x.r]}" data-game="${x.id}">
+      <div class="disp text-3xl font-bold" style="color:${RC[x.r]}">${x.d.getFullYear()}</div>
+      <div class="font-semibold">${esc(x.t1)} ${x.gp} × ${x.gc} ${esc(x.t2)}</div>
+      <div class="text-xs text-slate-500">${esc(x.camp)} · ${esc(x.est)}</div></div>`).join('')
+    : '<p class="text-slate-500 text-sm">Nenhum jogo registrado nesta data.</p>';
+}
+
+function renderAdv(){
+  const sel = $('selAdv'), prev = sel.value;
+  const advs = [...new Set(G.map(x => x.t2))].filter(Boolean).sort((a,b) => a.localeCompare(b,'pt-BR'));
+  sel.innerHTML = '<option value="">Escolha um adversário</option>' + advs.map(a => `<option>${esc(a)}</option>`).join('');
+  if (advs.includes(prev)) sel.value = prev;
+  showRetro();
+}
+function showRetro(){
+  const a = $('selAdv').value;
+  if (!a){ $('retro').innerHTML = '<p class="text-sm text-slate-500">Selecione um time para ver o histórico.</p>'; return; }
+  const l = G.filter(x => x.t2 === a), s = stats(l), u = l[0];
+  const box = (t, v, c) => `<div class="rounded-lg bg-slate-50 p-3 text-center"><div class="disp text-3xl font-bold" ${c ? `style="color:${c}"` : ''}>${v}</div><div class="text-xs text-slate-500">${t}</div></div>`;
+  $('retro').innerHTML = `<div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+    ${box('Vitórias', s.v, RC.V)}${box('Empates', s.e, RC.E)}${box('Derrotas', s.d, RC.D)}
+    ${box('Gols pró', s.gp)}${box('Gols contra', s.gc)}${box('Aproveitamento', pct(s.ap))}</div>
+    <p class="mt-3 text-sm cursor-pointer hover:underline" data-game="${u.id}">Último jogo: <strong>${fmtD(u.d)}</strong> · ${esc(u.t1)} ${u.gp} × ${u.gc} ${esc(u.t2)} ${badge(u.r)}</p>`;
+}
+
+function renderTabela(){
+  const q = filtro.toLowerCase();
+  const l = q ? G.filter(x => [x.t1,x.t2,x.camp,x.fase,x.est,x.tec,x.pais,x.uf,x.obs,x.comp.join(' '),x.gols.join(' '),fmtD(x.d)].join(' ').toLowerCase().includes(q)) : G;
+  const pages = Math.max(1, Math.ceil(l.length / PAGE_SIZE));
+  page = Math.min(page, pages - 1);
+  const rows = l.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  $('tabJogos').innerHTML = `<thead class="text-left text-slate-500 border-b"><tr>${['Data','Jogo','Placar','Campeonato','Estádio','C/F','Público','Companhia'].map(h => `<th class="py-2 pr-3 font-semibold">${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(x => `<tr class="border-b border-slate-100 cursor-pointer hover:bg-slate-50" data-game="${x.id}">
+      <td class="py-2 pr-3 whitespace-nowrap">${fmtD(x.d)}</td>
+      <td class="pr-3">${esc(x.t1)} x ${esc(x.t2)}</td>
+      <td class="pr-3 font-bold whitespace-nowrap">${badge(x.r)} ${x.gp} × ${x.gc}</td>
+      <td class="pr-3">${esc(x.camp)}${x.fase ? ' <span class="text-slate-400">· ' + esc(x.fase) + '</span>' : ''}</td>
+      <td class="pr-3">${esc(x.est)}</td><td class="pr-3">${esc(x.cf)}</td>
+      <td class="pr-3">${x.pub ? fmtN(x.pub) : ''}</td><td>${esc(x.comp.join(', '))}</td></tr>`).join('') || '<tr><td colspan="8" class="py-4 text-slate-500">Nada encontrado.</td></tr>'}</tbody>`;
+  $('pagInfo').textContent = `Página ${page + 1} de ${pages} · ${l.length} jogos`;
+  $('prev').disabled = page === 0; $('next').disabled = page >= pages - 1;
+}
+
+// ============ ABA 2 ============
+const th = h => `<th class="py-2 pr-3 font-semibold text-left">${h}</th>`;
+function statTable(first, list, limit = 5, tail = false){
+  const hid = i => (tail ? i < list.length - limit : i >= limit) ? ' extra hidden' : '';
+  const btn = list.length > limit ? `<button data-toggle data-label="Ver todos (${list.length})" class="text-xs font-semibold mt-2" style="color:var(--red)">Ver todos (${list.length})</button>` : '';
+  return `<div class="xp"><table class="w-full text-sm"><thead class="text-slate-500 border-b"><tr>${th(first)}${['J','V','E','D','GP','GC','Aprov.'].map(h => `<th class="py-2 px-1.5 text-right font-semibold">${h}</th>`).join('')}</tr></thead><tbody>
+  ${list.map((s,i) => `<tr class="border-b border-slate-100${hid(i)}"><td class="py-1.5 pr-3 whitespace-nowrap">${esc(s.k)}</td>${[s.j,s.v,s.e,s.d,s.gp,s.gc].map(n => `<td class="px-1.5 text-right">${n}</td>`).join('')}<td class="px-1.5 text-right font-semibold">${pct(s.ap)}</td></tr>`).join('')}</tbody></table>${btn}</div>`;
+}
+function rankBlock(id, title, list){
+  const mode = rankSort[id] || 'j';
+  const sorted = [...list].sort(mode === 'j' ? (a,b) => b.j - a.j || b.ap - a.ap : (a,b) => b.ap - a.ap || b.j - a.j);
+  return `<div class="bg-white rounded-xl p-4 shadow-sm"><div class="flex items-center justify-between mb-3 gap-2">
+    <h3 class="disp text-2xl font-bold">${title}</h3>
+    <div class="flex text-xs border border-slate-300 rounded-lg overflow-hidden">
+      <button data-rank="${id}" data-mode="j" class="px-2.5 py-1 ${mode === 'j' ? 'bg-slate-800 text-white' : ''}">Mais jogos</button>
+      <button data-rank="${id}" data-mode="ap" class="px-2.5 py-1 ${mode === 'ap' ? 'bg-slate-800 text-white' : ''}">Melhor aproveitamento</button></div></div>
+    <div class="scroll-x">${statTable(title.replace(/^.*por /i,''), sorted)}</div></div>`;
+}
+
+function renderStats(){
+  const ano = groupStats(G, x => x.d.getFullYear()).sort((a,b) => a.k - b.k);
+  $('porAno').innerHTML = statTable('Ano', ano, 5, true);
+
+  const dia = groupStats(G, x => x.d.getDay()).sort((a,b) => b.j - a.j || a.k - b.k).map(s => ({...s, k: DIAS[s.k]}));
+  $('porDia').innerHTML = statTable('Dia', dia, 3);
+
+  const camp = groupStats(G, x => x.camp), adv = groupStats(G, x => x.t2), uf = groupStats(G, x => x.uf), pais = groupStats(G, x => x.pais);
+  $('rankings').innerHTML = rankBlock('camp','Por Campeonato',camp) + rankBlock('adv','Por Adversário',adv) + rankBlock('uf','Adversários por Estado',uf) + rankBlock('pais','Adversários por País',pais);
+  window._rk = {camp, adv, uf, pais};
+
+  $('artilheiros').innerHTML = artList(15, 5);
+
+  renderCuriosidades();
+  renderCharts(ano);
+}
+
+const rankAp = (l, min) => { const by = (a,b) => b.ap - a.ap || b.j - a.j; return [...l.filter(x => x.j >= min).sort(by), ...l.filter(x => x.j < min).sort(by).map(x => ({...x, low:true}))]; };
+const gSub = x => `${esc(x.t1)} x ${esc(x.t2)}, ${fmtD(x.d)}`;
+const ORDEM = ['Estádio mais visitado','Maior goleada','Maior público presenciado','Técnico com melhor aproveitamento','Companhia mais frequente','Companhia que dá mais sorte','Média de público','Menor público presenciado'];
+function renderCuriosidades(){
+  const cards = [];
+  const add = (t, list, label) => {
+    list = list.slice(0, 10); if (!list.length) return;
+    const [f, ...rest] = list, gm = i => i.g != null ? ` data-game="${i.g}"` : '', cur = i => i.g != null ? ' cursor-pointer hover:underline' : '';
+    const more = rest.length ? `<details class="mt-3 border-t border-slate-100 pt-2"><summary class="text-xs font-semibold cursor-pointer" style="color:var(--red)">${label || 'Ver os outros ' + rest.length}</summary>
+      <ol start="2" class="list-decimal ml-5 mt-2 space-y-1.5 text-sm">${rest.map(i => `<li${gm(i)} class="${cur(i)}"><div class="font-medium">${i.v}</div><div class="text-xs text-slate-500">${i.s || ''}</div></li>`).join('')}</ol></details>` : '';
+    cards.push({t, h:`<div class="bg-white rounded-xl p-4 shadow-sm"><div${gm(f)} class="${cur(f)}"><div class="text-xs text-slate-500">${t}</div><div class="disp text-2xl font-bold leading-tight mt-1">${f.v}</div><div class="text-xs text-slate-500 mt-0.5">${f.s || ''}</div></div>${more}</div>`});
+  };
+  const jg = s => `${s.j} ${s.j === 1 ? 'jogo' : 'jogos'}`, apS = s => `${pct(s.ap)} em ${jg(s)}${s.low ? ' · poucos jogos' : ''}`;
+  add('Estádio mais visitado', groupStats(G, x => x.est).sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s)})));
+  add('Técnico com melhor aproveitamento', rankAp(groupStats(G, x => x.tec), MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s)})));
+  const comp = groupStats(G, x => x.comp);
+  add('Companhia mais frequente', [...comp].sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s) + ' juntos'})));
+  add('Companhia que dá mais sorte', rankAp([...comp], MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s)})));
+  const P = G.filter(x => x.pub > 0);
+  if (P.length){
+    const avg = a => Math.round(a.reduce((t,x) => t + x.pub, 0) / a.length);
+    const porEst = [...groupBy(P, x => x.est)].map(([k, a]) => ({k, m:avg(a), n:a.length})).sort((a,b) => b.m - a.m);
+    add('Média de público', [{v:fmtN(avg(P)), s:`${P.length} jogos com público informado`}, ...porEst.map(o => ({v:fmtN(o.m), s:`${esc(o.k)} · ${o.n} ${o.n === 1 ? 'jogo' : 'jogos'}`}))], 'Média por estádio');
+    add('Maior público presenciado', [...P].sort((a,b) => b.pub - a.pub).map(x => ({v:fmtN(x.pub), s:gSub(x), g:x.id})));
+    add('Menor público presenciado', [...P].sort((a,b) => a.pub - b.pub).map(x => ({v:fmtN(x.pub), s:gSub(x), g:x.id})));
+  }
+  add('Maior goleada', G.filter(x => x.r === 'V').sort((a,b) => (b.gp - b.gc) - (a.gp - a.gc) || b.gp - a.gp).map(x => ({v:`${x.gp} × ${x.gc}`, s:gSub(x), g:x.id})));
+  $('curiosidades').innerHTML = `<h2 class="disp text-2xl font-bold mb-3">Raio-X</h2><div class="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start">${cards.sort((a,b) => ORDEM.indexOf(a.t) - ORDEM.indexOf(b.t)).map(c => c.h).join('')}</div>`;
+}
+
+function renderCharts(ano){
+  Object.values(charts).forEach(c => c.destroy());
+  charts.ano = new Chart($('chAno'), {
+    type:'bar',
+    data:{labels:ano.map(a => a.k), datasets:[{label:'Aproveitamento (%)', data:ano.map(a => +a.ap.toFixed(1)), backgroundColor:'#b5201e', borderRadius:4}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{min:0, max:100}}}
+  });
+  const s = stats(G);
+  $('vedNums').innerHTML = [['V',s.v,'Vitórias'],['E',s.e,'Empates'],['D',s.d,'Derrotas']].map(([r,n,t]) => `<div><div class="disp text-3xl font-bold" style="color:${RC[r]}">${n}</div><div class="text-xs text-slate-500">${t} · ${pct(n / s.j * 100)}</div></div>`).join('');
+  charts.ved = new Chart($('chVed'), {
+    type:'doughnut',
+    data:{labels:[`Vitórias (${s.v})`,`Empates (${s.e})`,`Derrotas (${s.d})`], datasets:[{data:[s.v, s.e, s.d], backgroundColor:['#3f7a56','#c2a03c','#b5201e']}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}}
+  });
+}
+
+// ============ ARTILHEIROS, MODAL E DETALHES ============
+const SC = new Map();
+let stack = [];
+function buildScorers(){
+  SC.clear();
+  G.forEach(x => {
+    const per = {};
+    x.gols.forEach(n => { const k = n.toLowerCase(); per[k] = (per[k] || 0) + 1; if (!SC.has(k)) SC.set(k, {n, c:0, games:[]}); SC.get(k).c++; });
+    Object.keys(per).forEach(k => SC.get(k).games.push({g:x, c:per[k]}));
+  });
+}
+const scorers = () => [...SC.values()].sort((a,b) => b.c - a.c || a.n.localeCompare(b.n,'pt-BR'));
+function artList(limit, pv){
+  const l = scorers().slice(0, limit), max = l[0]?.c || 1, hid = i => pv && i >= pv ? ' extra hidden' : '';
+  const items = l.map((a,i) => `<button data-player="${esc(a.n.toLowerCase())}" class="w-full flex items-center gap-2 py-1.5 text-sm text-left hover:bg-slate-50 rounded${hid(i)}">
+    <span class="w-6 text-slate-400 text-right">${i+1}</span><span class="w-32 truncate font-medium">${esc(a.n)}</span>
+    <div class="flex-1 h-4 bg-slate-100 rounded"><div class="h-4 rounded" style="width:${a.c/max*100}%;background:var(--red)"></div></div><span class="w-8 font-semibold text-right">${a.c}</span></button>`).join('');
+  if (!items) return '<p class="text-sm text-slate-500">Sem gols registrados.</p>';
+  const btn = pv && l.length > pv ? `<button data-toggle data-label="Ver todos (${l.length})" class="text-xs font-semibold mt-2" style="color:var(--red)">Ver todos (${l.length})</button>` : '';
+  return `<div class="xp">${items}${btn}</div>`;
+}
+function renderArtBox(){
+  const t = scorers()[0];
+  $('boxArt').classList.toggle('hidden', !t);
+  if (t) $('boxArt').innerHTML = `<div><div class="text-xs text-slate-500">Artilheiro</div><div class="disp text-3xl font-bold leading-tight">${esc(t.n)}</div>
+    <div class="text-sm text-slate-600">${t.c} gols em ${t.games.length} jogos</div></div><span class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 shrink-0">Ver todos</span>`;
+}
+const gameRow = (x, extra) => `<button data-game="${x.id}" class="w-full text-left py-2 px-1 border-b border-slate-100 hover:bg-slate-50 flex gap-3 items-center">
+  ${badge(x.r)}
+  <span class="flex-1 text-sm"><span class="block text-xs text-slate-500">${fmtD(x.d)} · ${esc(x.camp)}</span>${esc(x.t1)} <strong>${x.gp} × ${x.gc}</strong> ${esc(x.t2)}</span>
+  ${extra ? `<span class="text-sm font-semibold shrink-0">${extra}</span>` : ''}</button>`;
+
+function viewScorers(){
+  const l = scorers(), tot = l.reduce((a,x) => a + x.c, 0);
+  return {title:'Todos os artilheiros', html:`<p class="text-sm text-slate-500 mb-2">${l.length} jogadores, ${tot} gols. Toque em um nome para ver os jogos.</p>${artList(1e9)}`};
+}
+function viewPlayer(k){
+  const s = SC.get(k);
+  if (!s) return {title:'Jogador', html:'<p class="text-sm">Jogador não encontrado.</p>'};
+  return {title:s.n, html:`<p class="text-sm text-slate-500 mb-2">${s.c} gols em ${s.games.length} jogos. Toque em uma partida para ver os detalhes.</p>
+    ${s.games.map(o => gameRow(o.g, o.c + (o.c > 1 ? ' gols' : ' gol'))).join('')}`};
+}
+function viewGame(id){
+  const x = G[id];
+  if (!x) return {title:'Jogo', html:''};
+  const cnt = {}; x.gols.forEach(n => { const k = n.toLowerCase(); (cnt[k] = cnt[k] || {n, c:0}).c++; });
+  const goals = Object.entries(cnt).map(([k,o]) => `<button data-player="${esc(k)}" class="underline decoration-dotted">${esc(o.n)}${o.c > 1 ? ' (' + o.c + ')' : ''}</button>`).join(', ');
+  const mando = {C:'Em casa', F:'Fora'}[x.cf.toUpperCase()] || x.cf;
+  const rows = [['Campeonato',x.camp],['Rodada/Fase',x.fase],['Estádio',x.est],['Mando',mando],['Setor',x.setor],
+    ['Público',x.pub ? fmtN(x.pub) : ''],['Técnico',x.tec],['Companhia',x.comp.join(', ')],['Classificado',x.clas],
+    ['Estado do adversário',x.uf],['País do adversário',x.pais],['Observação',x.obs]].filter(r => r[1]);
+  return {title:`${x.t1} x ${x.t2}`, html:`<div class="text-center mb-4">
+    <div class="text-sm text-slate-500">${DIAS[x.d.getDay()]}, ${fmtD(x.d)}</div>
+    <div class="disp text-5xl font-bold" style="color:${RC[x.r]}">${x.gp} × ${x.gc}</div>
+    <div class="text-sm font-semibold mt-1">${badge(x.r)} ${RN[x.r]}</div></div>
+    ${goals ? `<div class="text-sm mb-3 rounded-lg bg-slate-50 p-3"><span class="text-slate-500">Gols:</span> ${goals}</div>` : ''}
+    <dl class="text-sm divide-y divide-slate-100">${rows.map(r => `<div class="flex justify-between gap-4 py-1.5"><dt class="text-slate-500">${r[0]}</dt><dd class="text-right font-medium">${esc(r[1])}</dd></div>`).join('')}</dl>`};
+}
+function go(v){ stack.push(v); drawModal(); }
+function drawModal(){
+  const v = stack[stack.length - 1];
+  $('modal').classList.toggle('hidden', !v);
+  document.body.style.overflow = v ? 'hidden' : '';
+  if (!v) return;
+  $('mBack').classList.toggle('hidden', stack.length < 2);
+  const r = v.t === 'game' ? viewGame(v.id) : v.t === 'player' ? viewPlayer(v.k) : viewScorers();
+  $('mTitle').textContent = r.title; $('mBody').innerHTML = r.html; $('mBody').scrollTop = 0;
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-toggle]');
+  if (t){ const box = t.closest('.xp'), on = box.dataset.open !== '1'; box.dataset.open = on ? '1' : '';
+    box.querySelectorAll('.extra').forEach(el => el.classList.toggle('hidden', !on)); t.textContent = on ? 'Mostrar menos' : t.dataset.label; return; }
+  const g = e.target.closest('[data-game]'); if (g) return go({t:'game', id:+g.dataset.game});
+  const p = e.target.closest('[data-player]'); if (p) return go({t:'player', k:p.dataset.player});
+  if (e.target.closest('#boxArt')) return go({t:'scorers'});
+  if (e.target === $('modal') || e.target.closest('#mClose')){ stack = []; drawModal(); }
+  else if (e.target.closest('#mBack')){ stack.pop(); drawModal(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ stack = []; drawModal(); }
+  if (e.key === 'Enter'){ const g = e.target.closest?.('article[data-game]'); if (g) g.click(); }
+});
+
+// ============ EVENTOS ============
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => { x.classList.toggle('tab-on', x === b); x.classList.toggle('text-slate-500', x !== b); });
+  ['t1','t2'].forEach(id => $(id).classList.toggle('hidden', id !== b.dataset.tab));
+  if (b.dataset.tab === 't2' && G.length) renderStats();
+  window.scrollTo({top:0});
+}));
+$('reload').addEventListener('click', load);
+$('selAdv').addEventListener('change', showRetro);
+$('busca').addEventListener('input', e => { filtro = e.target.value.trim(); page = 0; renderTabela(); });
+$('prev').addEventListener('click', () => { page--; renderTabela(); });
+$('next').addEventListener('click', () => { page++; renderTabela(); });
+$('rankings').addEventListener('click', e => {
+  const b = e.target.closest('[data-rank]'); if (!b) return;
+  rankSort[b.dataset.rank] = b.dataset.mode;
+  const R = window._rk, T = {camp:'Por Campeonato', adv:'Por Adversário', uf:'Adversários por Estado', pais:'Adversários por País'};
+  $('rankings').innerHTML = ['camp','adv','uf','pais'].map(k => rankBlock(k, T[k], R[k])).join('');
+});
+
+load();
+setInterval(load, 5 * 60 * 1000); // atualiza sozinho a cada 5 minutos
+</script>
+</body>
+</html>
