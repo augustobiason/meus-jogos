@@ -49,6 +49,7 @@
   <!-- ABA 1 -->
   <section id="t1" class="space-y-8">
     <button id="boxArt" class="w-full text-left rounded-xl p-4 bg-white shadow-sm flex items-center justify-between gap-3" style="border-left:4px solid var(--red)"></button>
+    <div id="proxCard"></div>
     <div>
       <h2 class="disp text-2xl font-bold mb-3">Últimos 10 jogos</h2>
       <div id="ultimos" class="flex gap-3 overflow-x-auto snap pb-3 -mx-4 px-4"></div>
@@ -107,7 +108,7 @@
 
 <script>
 // ============ CONFIG ============
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSEqpb66M3cnFdffuaBK_0pSXoUh4DvdLouY7yWIp9C7wB_WXSfsacSgFVGs8rsQA-wXZqs83QfN3Ze/pub?gid=0&single=true&output=csv';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/SEU_ID_AQUI/pub?gid=0&single=true&output=csv';
 const PAGE_SIZE = 15;
 const MIN_JOGOS_RANKING = 3; // mínimo de jogos para técnico/companhia entrarem em "melhor aproveitamento"
 
@@ -117,7 +118,8 @@ const DEMO = `Data,Time1,GP,GC,Time2,Result,Gol1,Gol2,Gol3,Gol4,Campeonato,Rodad
 05/10/2023,São Paulo,0,0,Palmeiras,E,,,,,Brasileirão,Rodada 28,Allianz Parque,F,Visitante,38000,,,Pedro,Técnico B,Brasil,SP
 14/10/2023,São Paulo,1,3,Flamengo,D,Fulano,,,,Brasileirão,Rodada 29,Maracanã,F,Visitante,55000,,,Pedro,Técnico B,Brasil,RJ
 14/10/2024,São Paulo,4,0,Santos,V,Fulano,Fulano,Ciclano,Beltrano,Copa do Brasil,Oitavas,Morumbi,C,Sul,43000,,Sim,João,Técnico B,Brasil,SP
-01/03/2025,São Paulo,3,2,Palmeiras,V,Ciclano,Fulano,Fulano,,Paulistão,Rodada 8,Morumbi,C,Norte,41000,,,João,Técnico A,Brasil,SP`;
+01/03/2025,São Paulo,3,2,Palmeiras,V,Ciclano,Fulano,Fulano,,Paulistão,Rodada 8,Morumbi,C,Norte,41000,,,João,Técnico A,Brasil,SP
+20/12/2026,São Paulo,,,Santos,,,,,,Paulistão,Rodada 1,Morumbi,C,Norte,,,,João e Pedro,Técnico A,Brasil,SP`;
 
 // ============ UTILS ============
 const $ = id => document.getElementById(id);
@@ -158,19 +160,25 @@ function toGames(rows){
   const h = rows[0].map(x => x.trim().toLowerCase());
   const ix = n => h.indexOf(n.toLowerCase());
   const g = (r, n) => (r[ix(n)] ?? '').trim();
-  return rows.slice(1).map(r => {
-    const d = parseDate(g(r,'Data')), gp = toInt(g(r,'GP')), gc = toInt(g(r,'GC'));
-    if (!d || gp === null || gc === null) return null;
-    return {
+  const t0 = new Date(); t0.setHours(0,0,0,0);
+  const played = [], up = [];
+  rows.slice(1).forEach(r => {
+    const d = parseDate(g(r,'Data')); if (!d) return;
+    const gp = toInt(g(r,'GP')), gc = toInt(g(r,'GC')), scored = gp !== null && gc !== null;
+    const x = {
       d, t1:g(r,'Time1'), gp, gc, t2:g(r,'Time2'),
-      r: gp > gc ? 'V' : gp < gc ? 'D' : 'E',
+      r: scored ? (gp > gc ? 'V' : gp < gc ? 'D' : 'E') : null,
       gols:['Gol1','Gol2','Gol3','Gol4'].map(k => g(r,k)).filter(Boolean),
       camp:g(r,'Campeonato'), fase:g(r,'Rodada/Fase'), est:g(r,'Estádio'), cf:g(r,'C/F'),
       setor:g(r,'Setor'), pub:toInt(g(r,'Público')), obs:g(r,'Observação'), clas:g(r,'Classificado'),
-      comp:g(r,'Companhia').split(/[,;\/]/).map(x => x.trim()).filter(Boolean),
+      comp:g(r,'Companhia').split(/\s*(?:,|;|\/|\se\s)\s*/i).map(n => n.trim()).filter(Boolean),
       tec:g(r,'Técnico'), pais:g(r,'País'), uf:g(r,'Estado')
     };
-  }).filter(Boolean).sort((a,b) => b.d - a.d).map((x,i) => (x.id = i, x));
+    if (scored && d <= t0) played.push(x); else if (d >= t0) up.push(x);
+  });
+  played.sort((a,b) => b.d - a.d).forEach((x,i) => x.id = i);
+  up.sort((a,b) => a.d - b.d);
+  return {played, up};
 }
 
 function stats(arr){
@@ -187,7 +195,7 @@ function groupBy(arr, fn){
 const groupStats = (arr, fn) => [...groupBy(arr, fn)].map(([k, a]) => ({k, ...stats(a)}));
 
 // ============ ESTADO ============
-let G = [], page = 0, filtro = '';
+let G = [], UP = [], page = 0, filtro = '';
 const rankSort = {};
 let charts = {};
 
@@ -205,7 +213,7 @@ async function load(){
       if (!res.ok) throw new Error('HTTP ' + res.status);
       text = await res.text();
     }
-    G = toGames(parseCSV(text));
+    const T = toGames(parseCSV(text)); G = T.played; UP = T.up;
     page = 0;
     renderAll();
   } catch (e){
@@ -218,7 +226,7 @@ async function load(){
 function renderAll(){
   const s = stats(G);
   $('resumo').textContent = `${s.j} jogos · ${s.v}V ${s.e}E ${s.d}D · ${pct(s.ap)} de aproveitamento`;
-  stack = []; drawModal(); buildScorers(); renderArtBox(); renderUltimos(); renderHoje(); renderAdv(); renderTabela();
+  stack = []; drawModal(); buildScorers(); renderArtBox(); renderProx(); renderUltimos(); renderHoje(); renderAdv(); renderTabela();
   if (!$('t2').classList.contains('hidden')) renderStats();
 }
 
@@ -239,15 +247,40 @@ function stub(x){
 function renderUltimos(){ $('ultimos').innerHTML = G.slice(0,10).map(stub).join('') || '<p class="text-slate-500">Nenhum jogo encontrado.</p>'; }
 
 function renderHoje(){
-  const t = new Date();
-  $('hojeLabel').textContent = `Jogos em ${t.getDate()} de ${t.toLocaleDateString('pt-BR',{month:'long'})}`;
+  const t = new Date(), t0 = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  const dm = `${t.getDate()} de ${t.toLocaleDateString('pt-BR',{month:'long'})}`;
   const l = G.filter(x => x.d.getDate() === t.getDate() && x.d.getMonth() === t.getMonth()).sort((a,b) => b.d - a.d);
-  $('nesteDia').innerHTML = l.length ? l.map(x => `
+  if (l.length){
+    $('hojeLabel').textContent = `Jogos em ${dm}`;
+    $('nesteDia').innerHTML = l.map(x => `
     <div class="bg-white rounded-xl p-4 shadow-sm border-l-2 cursor-pointer" style="border-color:${RC[x.r]}" data-game="${x.id}">
       <div class="disp text-3xl font-bold" style="color:${RC[x.r]}">${x.d.getFullYear()}</div>
       <div class="font-semibold">${esc(x.t1)} ${x.gp} × ${x.gc} ${esc(x.t2)}</div>
-      <div class="text-xs text-slate-500">${esc(x.camp)} · ${esc(x.est)}</div></div>`).join('')
-    : '<p class="text-slate-500 text-sm">Nenhum jogo registrado nesta data.</p>';
+      <div class="text-xs text-slate-500">${esc(x.camp)} · ${esc(x.est)}</div></div>`).join('');
+    return;
+  }
+  const all = [...G, ...UP];
+  if (!all.length){ $('hojeLabel').textContent = `Nenhum jogo em ${dm}.`; $('nesteDia').innerHTML = ''; return; }
+  const n = all.sort((a,b) => Math.abs(a.d - t0) - Math.abs(b.d - t0) || a.d - b.d)[0];
+  const dd = Math.round((n.d - t0) / 864e5), ad = Math.abs(dd), un = ad === 1 ? 'dia' : 'dias';
+  $('hojeLabel').textContent = `Nenhum jogo em ${dm}. O mais próximo desta data:`;
+  $('nesteDia').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm border-l-2 ${n.id != null ? 'cursor-pointer' : ''}" style="border-color:${n.r ? RC[n.r] : 'var(--red)'}"${n.id != null ? ` data-game="${n.id}"` : ''}>
+    <div class="text-xs text-slate-500">${fmtD(n.d)} · ${dd === 0 ? 'hoje' : dd < 0 ? `há ${ad} ${un}` : `daqui a ${ad} ${un}`}</div>
+    <div class="font-semibold mt-1">${esc(n.t1)} ${n.r ? `${n.gp} × ${n.gc}` : 'x'} ${esc(n.t2)}</div>
+    <div class="text-xs text-slate-500">${esc(n.camp)} · ${esc(n.est)}</div></div>`;
+}
+
+function renderProx(){
+  const n = UP[0], el = $('proxCard');
+  if (!n){ el.innerHTML = ''; return; }
+  const h = G.filter(x => x.t2 === n.t2), st = stats(h), u = h[0], t0 = new Date(); t0.setHours(0,0,0,0);
+  const dd = Math.round((n.d - t0) / 864e5);
+  el.innerHTML = `<div class="rounded-xl bg-white shadow-sm p-4" style="border-left:4px solid var(--red)">
+    <div class="text-xs text-slate-500">Próximo jogo · ${DIAS[n.d.getDay()]}, ${fmtD(n.d)} · ${dd === 0 ? 'hoje' : dd === 1 ? 'amanhã' : 'em ' + dd + ' dias'}</div>
+    <div class="disp text-2xl font-bold leading-tight mt-1">${esc(n.t1)} x ${esc(n.t2)}</div>
+    <div class="text-sm text-slate-600">${esc([n.camp, n.fase, n.est].filter(Boolean).join(' · '))}</div>
+    ${h.length ? `<div class="mt-3 pt-3 border-t border-slate-100 text-sm cursor-pointer" data-filter="adv" data-val="${esc(n.t2)}"><span class="text-slate-500">Histórico:</span> <strong>${st.j}</strong> ${st.j === 1 ? 'jogo' : 'jogos'} · ${st.v}V ${st.e}E ${st.d}D · gols ${st.gp} × ${st.gc} · ${pct(st.ap)}
+      <div class="text-xs text-slate-500 mt-0.5">Último: ${fmtD(u.d)}, ${u.gp} × ${u.gc} ${badge(u.r)}</div></div>` : '<div class="mt-3 pt-3 border-t border-slate-100 text-sm text-slate-500">Sem jogos anteriores contra este adversário na planilha.</div>'}</div>`;
 }
 
 function renderAdv(){
@@ -265,7 +298,8 @@ function showRetro(){
   $('retro').innerHTML = `<div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
     ${box('Vitórias', s.v, RC.V)}${box('Empates', s.e, RC.E)}${box('Derrotas', s.d, RC.D)}
     ${box('Gols pró', s.gp)}${box('Gols contra', s.gc)}${box('Aproveitamento', pct(s.ap))}</div>
-    <p class="mt-3 text-sm cursor-pointer hover:underline" data-game="${u.id}">Último jogo: <strong>${fmtD(u.d)}</strong> · ${esc(u.t1)} ${u.gp} × ${u.gc} ${esc(u.t2)} ${badge(u.r)}</p>`;
+    <p class="mt-3 text-sm cursor-pointer hover:underline" data-game="${u.id}">Último jogo: <strong>${fmtD(u.d)}</strong> · ${esc(u.t1)} ${u.gp} × ${u.gc} ${esc(u.t2)} ${badge(u.r)}</p>
+    <h3 class="font-semibold mt-4 mb-1 text-sm">Todos os confrontos (${l.length})</h3>${l.map(x => gameRow(x)).join('')}`;
 }
 
 function renderTabela(){
@@ -288,11 +322,11 @@ function renderTabela(){
 
 // ============ ABA 2 ============
 const th = h => `<th class="py-2 pr-3 font-semibold text-left">${h}</th>`;
-function statTable(first, list, limit = 5, tail = false){
+function statTable(first, list, limit = 5, tail = false, kind){
   const hid = i => (tail ? i < list.length - limit : i >= limit) ? ' extra hidden' : '';
   const btn = list.length > limit ? `<button data-toggle data-label="Ver todos (${list.length})" class="text-xs font-semibold mt-2" style="color:var(--red)">Ver todos (${list.length})</button>` : '';
   return `<div class="xp"><table class="w-full text-sm"><thead class="text-slate-500 border-b"><tr>${th(first)}${['J','V','E','D','GP','GC','Aprov.'].map(h => `<th class="py-2 px-1.5 text-right font-semibold">${h}</th>`).join('')}</tr></thead><tbody>
-  ${list.map((s,i) => `<tr class="border-b border-slate-100${hid(i)}"><td class="py-1.5 pr-3 whitespace-nowrap">${esc(s.k)}</td>${[s.j,s.v,s.e,s.d,s.gp,s.gc].map(n => `<td class="px-1.5 text-right">${n}</td>`).join('')}<td class="px-1.5 text-right font-semibold">${pct(s.ap)}</td></tr>`).join('')}</tbody></table>${btn}</div>`;
+  ${list.map((s,i) => `<tr${kind ? ` data-filter="${kind}" data-val="${esc(s.k)}"` : ''} class="border-b border-slate-100${kind ? ' cursor-pointer hover:bg-slate-50' : ''}${hid(i)}"><td class="py-1.5 pr-3 whitespace-nowrap">${esc(s.k)}</td>${[s.j,s.v,s.e,s.d,s.gp,s.gc].map(n => `<td class="px-1.5 text-right">${n}</td>`).join('')}<td class="px-1.5 text-right font-semibold">${pct(s.ap)}</td></tr>`).join('')}</tbody></table>${btn}</div>`;
 }
 function rankBlock(id, title, list){
   const mode = rankSort[id] || 'j';
@@ -302,15 +336,15 @@ function rankBlock(id, title, list){
     <div class="flex text-xs border border-slate-300 rounded-lg overflow-hidden">
       <button data-rank="${id}" data-mode="j" class="px-2.5 py-1 ${mode === 'j' ? 'bg-slate-800 text-white' : ''}">Mais jogos</button>
       <button data-rank="${id}" data-mode="ap" class="px-2.5 py-1 ${mode === 'ap' ? 'bg-slate-800 text-white' : ''}">Melhor aproveitamento</button></div></div>
-    <div class="scroll-x">${statTable(title.replace(/^.*por /i,''), sorted)}</div></div>`;
+    <div class="scroll-x">${statTable(title.replace(/^.*por /i,''), sorted, 5, false, id)}</div></div>`;
 }
 
 function renderStats(){
   const ano = groupStats(G, x => x.d.getFullYear()).sort((a,b) => a.k - b.k);
-  $('porAno').innerHTML = statTable('Ano', ano, 5, true);
+  $('porAno').innerHTML = statTable('Ano', ano, 5, true, 'ano');
 
   const dia = groupStats(G, x => x.d.getDay()).sort((a,b) => b.j - a.j || a.k - b.k).map(s => ({...s, k: DIAS[s.k]}));
-  $('porDia').innerHTML = statTable('Dia', dia, 3);
+  $('porDia').innerHTML = statTable('Dia', dia, 3, false, 'dia');
 
   const camp = groupStats(G, x => x.camp), adv = groupStats(G, x => x.t2), uf = groupStats(G, x => x.uf), pais = groupStats(G, x => x.pais);
   $('rankings').innerHTML = rankBlock('camp','Por Campeonato',camp) + rankBlock('adv','Por Adversário',adv) + rankBlock('uf','Adversários por Estado',uf) + rankBlock('pais','Adversários por País',pais);
@@ -329,22 +363,22 @@ function renderCuriosidades(){
   const cards = [];
   const add = (t, list, label) => {
     list = list.slice(0, 10); if (!list.length) return;
-    const [f, ...rest] = list, gm = i => i.g != null ? ` data-game="${i.g}"` : '', cur = i => i.g != null ? ' cursor-pointer hover:underline' : '';
+    const [f, ...rest] = list, gm = i => i.g != null ? ` data-game="${i.g}"` : i.fk ? ` data-filter="${i.fk}" data-val="${esc(i.fv)}"` : '', cur = i => (i.g != null || i.fk) ? ' cursor-pointer hover:underline' : '';
     const more = rest.length ? `<details class="mt-3 border-t border-slate-100 pt-2"><summary class="text-xs font-semibold cursor-pointer" style="color:var(--red)">${label || 'Ver os outros ' + rest.length}</summary>
       <ol start="2" class="list-decimal ml-5 mt-2 space-y-1.5 text-sm">${rest.map(i => `<li${gm(i)} class="${cur(i)}"><div class="font-medium">${i.v}</div><div class="text-xs text-slate-500">${i.s || ''}</div></li>`).join('')}</ol></details>` : '';
     cards.push({t, h:`<div class="bg-white rounded-xl p-4 shadow-sm"><div${gm(f)} class="${cur(f)}"><div class="text-xs text-slate-500">${t}</div><div class="disp text-2xl font-bold leading-tight mt-1">${f.v}</div><div class="text-xs text-slate-500 mt-0.5">${f.s || ''}</div></div>${more}</div>`});
   };
   const jg = s => `${s.j} ${s.j === 1 ? 'jogo' : 'jogos'}`, apS = s => `${pct(s.ap)} em ${jg(s)}${s.low ? ' · poucos jogos' : ''}`;
-  add('Estádio mais visitado', groupStats(G, x => x.est).sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s)})));
-  add('Técnico com melhor aproveitamento', rankAp(groupStats(G, x => x.tec), MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s)})));
+  add('Estádio mais visitado', groupStats(G, x => x.est).sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s), fk:'est', fv:s.k})));
+  add('Técnico com melhor aproveitamento', rankAp(groupStats(G, x => x.tec), MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s), fk:'tec', fv:s.k})));
   const comp = groupStats(G, x => x.comp);
-  add('Companhia mais frequente', [...comp].sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s) + ' juntos'})));
-  add('Companhia que dá mais sorte', rankAp([...comp], MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s)})));
+  add('Companhia mais frequente', [...comp].sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s) + ' juntos', fk:'comp', fv:s.k})));
+  add('Companhia que dá mais sorte', rankAp([...comp], MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s), fk:'comp', fv:s.k})));
   const P = G.filter(x => x.pub > 0);
   if (P.length){
     const avg = a => Math.round(a.reduce((t,x) => t + x.pub, 0) / a.length);
     const porEst = [...groupBy(P, x => x.est)].map(([k, a]) => ({k, m:avg(a), n:a.length})).sort((a,b) => b.m - a.m);
-    add('Média de público', [{v:fmtN(avg(P)), s:`${P.length} jogos com público informado`}, ...porEst.map(o => ({v:fmtN(o.m), s:`${esc(o.k)} · ${o.n} ${o.n === 1 ? 'jogo' : 'jogos'}`}))], 'Média por estádio');
+    add('Média de público', [{v:fmtN(avg(P)), s:`${P.length} jogos com público informado`}, ...porEst.map(o => ({v:fmtN(o.m), s:`${esc(o.k)} · ${o.n} ${o.n === 1 ? 'jogo' : 'jogos'}`, fk:'est', fv:o.k}))], 'Média por estádio');
     add('Maior público presenciado', [...P].sort((a,b) => b.pub - a.pub).map(x => ({v:fmtN(x.pub), s:gSub(x), g:x.id})));
     add('Menor público presenciado', [...P].sort((a,b) => a.pub - b.pub).map(x => ({v:fmtN(x.pub), s:gSub(x), g:x.id})));
   }
@@ -356,11 +390,17 @@ function renderCharts(ano){
   Object.values(charts).forEach(c => c.destroy());
   charts.ano = new Chart($('chAno'), {
     type:'bar',
-    data:{labels:ano.map(a => a.k), datasets:[{label:'Aproveitamento (%)', data:ano.map(a => +a.ap.toFixed(1)), backgroundColor:'#b5201e', borderRadius:4}]},
-    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{min:0, max:100}}}
+    data:{labels:ano.map(a => a.k), datasets:[
+      {type:'bar', label:'Jogos', data:ano.map(a => a.j), backgroundColor:'#cfcfcf', borderRadius:3, yAxisID:'y', order:2},
+      {type:'line', label:'Aproveitamento (%)', data:ano.map(a => +a.ap.toFixed(1)), borderColor:'#b5201e', backgroundColor:'#b5201e', tension:.25, pointRadius:3, yAxisID:'y1', order:1}]},
+    options:{responsive:true, maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
+      onClick:(e, els) => { if (els.length) go({t:'list', k:'ano', v:String(ano[els[0].index].k)}); },
+      plugins:{legend:{position:'bottom'}},
+      scales:{y:{beginAtZero:true, position:'left', ticks:{precision:0}, title:{display:true, text:'Jogos'}},
+        y1:{min:0, max:100, position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Aproveitamento (%)'}}}}
   });
   const s = stats(G);
-  $('vedNums').innerHTML = [['V',s.v,'Vitórias'],['E',s.e,'Empates'],['D',s.d,'Derrotas']].map(([r,n,t]) => `<div><div class="disp text-3xl font-bold" style="color:${RC[r]}">${n}</div><div class="text-xs text-slate-500">${t} · ${pct(n / s.j * 100)}</div></div>`).join('');
+  $('vedNums').innerHTML = [['V',s.v,'Vitórias'],['E',s.e,'Empates'],['D',s.d,'Derrotas']].map(([r,n,t]) => `<div><div class="disp text-3xl font-bold" style="color:${RC[r]}">${n}</div><div class="text-xs text-slate-500">${t} · ${pct(n / s.j * 100)}</div></div>`).join('') + `<div class="col-span-3 mt-3 pt-3 border-t border-slate-100"><div class="disp text-3xl font-bold">${pct(s.ap)}</div><div class="text-xs text-slate-500">Aproveitamento geral · ${s.v * 3 + s.e} de ${s.j * 3} pontos</div></div>`;
   charts.ved = new Chart($('chVed'), {
     type:'doughnut',
     data:{labels:[`Vitórias (${s.v})`,`Empates (${s.e})`,`Derrotas (${s.d})`], datasets:[{data:[s.v, s.e, s.d], backgroundColor:['#3f7a56','#c2a03c','#b5201e']}]},
@@ -426,6 +466,14 @@ function viewGame(id){
     ${goals ? `<div class="text-sm mb-3 rounded-lg bg-slate-50 p-3"><span class="text-slate-500">Gols:</span> ${goals}</div>` : ''}
     <dl class="text-sm divide-y divide-slate-100">${rows.map(r => `<div class="flex justify-between gap-4 py-1.5"><dt class="text-slate-500">${r[0]}</dt><dd class="text-right font-medium">${esc(r[1])}</dd></div>`).join('')}</dl>`};
 }
+const FK = {comp:(x,v) => x.comp.includes(v), est:(x,v) => x.est === v, tec:(x,v) => x.tec === v, adv:(x,v) => x.t2 === v, ano:(x,v) => String(x.d.getFullYear()) === v, camp:(x,v) => x.camp === v, uf:(x,v) => x.uf === v, pais:(x,v) => x.pais === v, dia:(x,v) => DIAS[x.d.getDay()] === v};
+const FL = {comp:'Companhia', est:'Estádio', tec:'Técnico', adv:'Adversário', ano:'Ano', camp:'Campeonato', uf:'Estado do adversário', pais:'País do adversário', dia:'Dia da semana'};
+function viewList(k, v){
+  const l = G.filter(x => FK[k](x, v)), st = stats(l);
+  const box = (t, n, c) => `<div class="rounded-lg bg-slate-50 p-2 text-center"><div class="disp text-xl font-bold" ${c ? `style="color:${c}"` : ''}>${n}</div><div class="text-[11px] text-slate-500">${t}</div></div>`;
+  return {title:v, html:`<p class="text-xs text-slate-500 mb-2">${FL[k]} · ${l.length} ${l.length === 1 ? 'jogo' : 'jogos'}</p>
+    <div class="grid grid-cols-4 gap-2 mb-3">${box('Vitórias', st.v, RC.V)}${box('Empates', st.e, RC.E)}${box('Derrotas', st.d, RC.D)}${box('Aprov.', pct(st.ap))}</div>${l.map(x => gameRow(x)).join('')}`};
+}
 function go(v){ stack.push(v); drawModal(); }
 function drawModal(){
   const v = stack[stack.length - 1];
@@ -433,7 +481,7 @@ function drawModal(){
   document.body.style.overflow = v ? 'hidden' : '';
   if (!v) return;
   $('mBack').classList.toggle('hidden', stack.length < 2);
-  const r = v.t === 'game' ? viewGame(v.id) : v.t === 'player' ? viewPlayer(v.k) : viewScorers();
+  const r = v.t === 'game' ? viewGame(v.id) : v.t === 'player' ? viewPlayer(v.k) : v.t === 'list' ? viewList(v.k, v.v) : viewScorers();
   $('mTitle').textContent = r.title; $('mBody').innerHTML = r.html; $('mBody').scrollTop = 0;
 }
 document.addEventListener('click', e => {
@@ -442,6 +490,7 @@ document.addEventListener('click', e => {
     box.querySelectorAll('.extra').forEach(el => el.classList.toggle('hidden', !on)); t.textContent = on ? 'Mostrar menos' : t.dataset.label; return; }
   const g = e.target.closest('[data-game]'); if (g) return go({t:'game', id:+g.dataset.game});
   const p = e.target.closest('[data-player]'); if (p) return go({t:'player', k:p.dataset.player});
+  const f = e.target.closest('[data-filter]'); if (f) return go({t:'list', k:f.dataset.filter, v:f.dataset.val});
   if (e.target.closest('#boxArt')) return go({t:'scorers'});
   if (e.target === $('modal') || e.target.closest('#mClose')){ stack = []; drawModal(); }
   else if (e.target.closest('#mBack')){ stack.pop(); drawModal(); }
