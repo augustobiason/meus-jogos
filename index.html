@@ -23,7 +23,7 @@
   th{cursor:pointer;white-space:nowrap}
   .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .snap{scroll-snap-type:x mandatory}.snap>*{scroll-snap-align:start}
-  .titulo{display:flex;align-items:center;gap:10px}
+  .titulo{display:flex;align-items:center;gap:12px}
   .titulo h1{margin:0;line-height:1}
   .escudo{height:34px;width:auto;flex-shrink:0;display:block;object-fit:contain}
   @keyframes giro{to{transform:rotate(360deg)}}
@@ -38,7 +38,7 @@
   <div class="max-w-6xl mx-auto px-4 pt-5 pb-0">
     <div class="flex items-end justify-between gap-3">
       <div>
-        <div class="titulo"><h1 class="disp text-3xl sm:text-4xl font-bold">Meus jogos <span style="color:var(--red)">•</span> São Paulo</h1><img class="escudo" src="Escudo_do_SPFC_1985-1991.png" alt="Escudo do São Paulo" onerror="this.style.display='none'"></div>
+        <div class="titulo"><img class="escudo" src="Escudo_do_SPFC_1985-1991.png" alt="Escudo do São Paulo" onerror="this.style.display='none'"><h1 class="disp text-3xl sm:text-4xl font-bold">Meus jogos <span style="color:var(--red)">•</span> São Paulo</h1></div>
         <p id="resumo" class="text-sm text-slate-600 mt-1">Carregando...</p>
       </div>
       <button id="reload" class="border border-slate-300 rounded-lg p-2 text-slate-700 hover:bg-slate-100" aria-label="Atualizar dados" title="Atualizar dados"><svg id="reloadIcon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>
@@ -157,12 +157,15 @@ function parseCSV(text){
   if (cur || row.length){ row.push(cur); rows.push(row); }
   return rows.filter(r => r.some(x => x.trim()));
 }
-function parseDate(s){
-  s = (s||'').trim();
-  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if (m){ let y = +m[3]; if (y < 100) y += 2000; return new Date(y, m[2]-1, +m[1]); }
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? new Date(+m[1], m[2]-1, +m[3]) : null;
+const isDataValida = d => d instanceof Date && !isNaN(d);
+function parseDataBR(str){
+  str = String(str ?? '').trim().split(/[\sT]/)[0];
+  let a, d, m, y;
+  if (str.includes('/')){ a = str.split('/'); d = +a[0]; m = +a[1]; y = +a[2]; if (y < 100) y += 2000; }
+  else if (str.includes('-')){ a = str.split('-'); y = +a[0]; m = +a[1]; d = +a[2]; }
+  else return null;
+  const dt = new Date(y, m - 1, d);
+  return isDataValida(dt) && dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d ? dt : null;
 }
 const toInt = v => { const n = parseInt(String(v||'').replace(/\D/g,''), 10); return isNaN(n) ? null : n; };
 
@@ -173,7 +176,7 @@ function toGames(rows){
   const t0 = new Date(); t0.setHours(0,0,0,0);
   const played = [], up = [];
   rows.slice(1).forEach(r => {
-    const d = parseDate(g(r,'Data')); if (!d) return;
+    const d = parseDataBR(g(r,'Data')); if (!isDataValida(d)) return;
     const gp = toInt(g(r,'GP')), gc = toInt(g(r,'GC')), scored = gp !== null && gc !== null;
     const x = {
       d, t1:g(r,'Time1'), gp, gc, t2:g(r,'Time2'),
@@ -261,15 +264,15 @@ function renderHoje(){
   const ref = d => Date.UTC(2000, d.getMonth(), d.getDate()) / 864e5; // ano fixo (bissexto): compara só dia e mês
   const dist = d => { const k = Math.abs(ref(d) - ref(t0)); return Math.min(k, 366 - k); }; // distância circular, com virada de ano
   const dm = `${t.getDate()} de ${t.toLocaleDateString('pt-BR',{month:'long'})}`;
-  const pool = G.filter(x => x.d <= t0); // só jogos já realizados
+  const pool = G.filter(x => isDataValida(x.d) && x.d <= t0); // só jogos já realizados
   const two = n => String(n).padStart(2, '0');
   const card = (x, tag) => `<div class="bg-white rounded-xl p-4 shadow-sm border-l-2 cursor-pointer" style="border-color:${RC[x.r]}" data-game="${x.id}">
       ${tag ? `<div class="inline-block text-[11px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 mb-1">${tag}</div>` : ''}
       <div class="disp text-3xl font-bold" style="color:${RC[x.r]}">${x.d.getFullYear()}</div>
       <div class="font-semibold">${esc(x.t1)} ${x.gp} × ${x.gc} ${esc(x.t2)}</div>
       <div class="text-xs text-slate-500">${esc(x.camp)} · ${esc(x.est)}</div></div>`;
-  let l = pool.filter(x => dist(x) === 0), near = false;
-  if (!l.length && pool.length){ const m = Math.min(...pool.map(dist)); l = pool.filter(x => dist(x) === m); near = true; }
+  let l = pool.filter(x => dist(x.d) === 0), near = false;
+  if (!l.length && pool.length){ const m = Math.min(...pool.map(x => dist(x.d))); l = pool.filter(x => dist(x.d) === m); near = true; }
   l.sort((a,b) => b.d - a.d);
   $('hojeLabel').textContent = !pool.length ? `Nenhum jogo em ${dm}.` : near ? `Nenhum jogo em ${dm} no histórico.` : `Jogos em ${dm}`;
   $('nesteDia').innerHTML = l.map(x => card(x, near ? `Data mais próxima no histórico (${two(x.d.getDate())}/${two(x.d.getMonth() + 1)})` : '')).join('');
@@ -529,4 +532,5 @@ load();
 setInterval(load, 5 * 60 * 1000); // atualiza sozinho a cada 5 minutos
 </script>
 </body>
+</html>
 </html>
