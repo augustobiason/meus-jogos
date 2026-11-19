@@ -1,15 +1,16 @@
 <!DOCTYPE html>
+<script>const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSEqpb66M3cnFdffuaBK_0pSXoUh4DvdLouY7yWIp9C7wB_WXSfsacSgFVGs8rsQA-wXZqs83QfN3Ze/pub?gid=0&single=true&output=csv";</script>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Meus Jogos</title>
+<title>Meus jogos • São Paulo</title>
+<link rel="icon" type="image/png" href="Escudo_do_SPFC_1985-1991.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<link rel="icon" type="image/png" href="Escudo_do_SPFC_1985-1991.png">
 <style>
   :root{--pitch:#111;--chalk:#f4f4f4;--ink:#161616;--red:#b5201e;--win:#3f7a56;--draw:#c2a03c;--loss:#b5201e}
   body{font-family:'Barlow',system-ui,sans-serif;background:var(--chalk);color:var(--ink)}
@@ -22,6 +23,12 @@
   th{cursor:pointer;white-space:nowrap}
   .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .snap{scroll-snap-type:x mandatory}.snap>*{scroll-snap-align:start}
+  .titulo{display:flex;align-items:center;gap:10px}
+  .titulo h1{margin:0;line-height:1}
+  .escudo{height:34px;width:auto;flex-shrink:0;display:block;object-fit:contain}
+  @keyframes giro{to{transform:rotate(360deg)}}
+  .giro{animation:giro .6s ease-in-out}
+  @media (prefers-reduced-motion:reduce){.giro{animation:none}}
   :focus-visible{outline:3px solid #e9c46a;outline-offset:2px}
 </style>
 </head>
@@ -31,10 +38,10 @@
   <div class="max-w-6xl mx-auto px-4 pt-5 pb-0">
     <div class="flex items-end justify-between gap-3">
       <div>
-        <h1 class="disp text-4xl font-bold leading-none">Meus Jogos <span style="color:var(--pitch)">·</span> São Paulo</h1>
+        <div class="titulo"><h1 class="disp text-3xl sm:text-4xl font-bold">Meus jogos <span style="color:var(--red)">•</span> São Paulo</h1><img class="escudo" src="Escudo_do_SPFC_1985-1991.png" alt="Escudo do São Paulo" onerror="this.style.display='none'"></div>
         <p id="resumo" class="text-sm text-slate-600 mt-1">Carregando...</p>
       </div>
-      <button id="reload" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-100" aria-label="Atualizar dados">Atualizar</button>
+      <button id="reload" class="border border-slate-300 rounded-lg p-2 text-slate-700 hover:bg-slate-100" aria-label="Atualizar dados" title="Atualizar dados"><svg id="reloadIcon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>
     </div>
     <nav class="flex gap-1 mt-5" role="tablist">
       <button class="tab px-4 py-2.5 rounded-t-lg font-semibold text-sm tab-on" data-tab="t1" role="tab">Linha do tempo</button>
@@ -108,12 +115,14 @@
 </div>
 
 <script>
-// ============ CONFIG ============
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSEqpb66M3cnFdffuaBK_0pSXoUh4DvdLouY7yWIp9C7wB_WXSfsacSgFVGs8rsQA-wXZqs83QfN3Ze/pub?gid=0&single=true&output=csv';
+// A URL do CSV (SHEET_CSV_URL) é declarada na linha 2 deste arquivo.
+
+// ============ OUTROS AJUSTES ============
 const PAGE_SIZE = 15;
+const MIN_JOGOS_COMPANHIA = 5; // mínimo de jogos juntos para "Companhia que dá mais sorte"
 const MIN_JOGOS_RANKING = 3; // mínimo de jogos para técnico/companhia entrarem em "melhor aproveitamento"
 
-// Dados de exemplo, usados só enquanto CSV_URL não for trocado
+// Dados de exemplo, usados só enquanto SHEET_CSV_URL não for trocado
 const DEMO = `Data,Time1,GP,GC,Time2,Result,Gol1,Gol2,Gol3,Gol4,Campeonato,Rodada/Fase,Estádio,C/F,Setor,Público,Observação,Classificado,Companhia,Técnico,País,Estado
 12/03/2022,São Paulo,2,1,Santos,V,Fulano,Ciclano,,,Paulistão,Rodada 10,Morumbi,C,Norte,40120,,,João,Técnico A,Brasil,SP
 05/10/2023,São Paulo,0,0,Palmeiras,E,,,,,Brasileirão,Rodada 28,Allianz Parque,F,Visitante,38000,,,Pedro,Técnico B,Brasil,SP
@@ -205,12 +214,12 @@ async function load(){
   const msg = $('msg'); msg.classList.add('hidden');
   try {
     let text;
-    if (CSV_URL.includes('SEU_ID_AQUI')){
+    if (!/^https?:\/\//i.test(SHEET_CSV_URL)){
       text = DEMO;
-      msg.textContent = 'Exibindo dados de exemplo. Troque a variável CSV_URL no código pelo link do seu CSV publicado.';
+      msg.textContent = 'Exibindo dados de exemplo. Troque a constante SHEET_CSV_URL na linha 2 do arquivo pelo link do seu CSV publicado.';
       msg.classList.remove('hidden');
     } else {
-      const res = await fetch(CSV_URL + (CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now());
+      const res = await fetch(SHEET_CSV_URL + (SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now());
       if (!res.ok) throw new Error('HTTP ' + res.status);
       text = await res.text();
     }
@@ -249,26 +258,21 @@ function renderUltimos(){ $('ultimos').innerHTML = G.slice(0,10).map(stub).join(
 
 function renderHoje(){
   const t = new Date(), t0 = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  const ref = d => Date.UTC(2000, d.getMonth(), d.getDate()) / 864e5; // ano fixo (bissexto): compara só dia e mês
+  const dist = d => { const k = Math.abs(ref(d) - ref(t0)); return Math.min(k, 366 - k); }; // distância circular, com virada de ano
   const dm = `${t.getDate()} de ${t.toLocaleDateString('pt-BR',{month:'long'})}`;
-  const l = G.filter(x => x.d.getDate() === t.getDate() && x.d.getMonth() === t.getMonth()).sort((a,b) => b.d - a.d);
-  if (l.length){
-    $('hojeLabel').textContent = `Jogos em ${dm}`;
-    $('nesteDia').innerHTML = l.map(x => `
-    <div class="bg-white rounded-xl p-4 shadow-sm border-l-2 cursor-pointer" style="border-color:${RC[x.r]}" data-game="${x.id}">
+  const pool = G.filter(x => x.d <= t0); // só jogos já realizados
+  const two = n => String(n).padStart(2, '0');
+  const card = (x, tag) => `<div class="bg-white rounded-xl p-4 shadow-sm border-l-2 cursor-pointer" style="border-color:${RC[x.r]}" data-game="${x.id}">
+      ${tag ? `<div class="inline-block text-[11px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 mb-1">${tag}</div>` : ''}
       <div class="disp text-3xl font-bold" style="color:${RC[x.r]}">${x.d.getFullYear()}</div>
       <div class="font-semibold">${esc(x.t1)} ${x.gp} × ${x.gc} ${esc(x.t2)}</div>
-      <div class="text-xs text-slate-500">${esc(x.camp)} · ${esc(x.est)}</div></div>`).join('');
-    return;
-  }
-  const all = [...G, ...UP];
-  if (!all.length){ $('hojeLabel').textContent = `Nenhum jogo em ${dm}.`; $('nesteDia').innerHTML = ''; return; }
-  const n = all.sort((a,b) => Math.abs(a.d - t0) - Math.abs(b.d - t0) || a.d - b.d)[0];
-  const dd = Math.round((n.d - t0) / 864e5), ad = Math.abs(dd), un = ad === 1 ? 'dia' : 'dias';
-  $('hojeLabel').textContent = `Nenhum jogo em ${dm}. O mais próximo desta data:`;
-  $('nesteDia').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm border-l-2 ${n.id != null ? 'cursor-pointer' : ''}" style="border-color:${n.r ? RC[n.r] : 'var(--red)'}"${n.id != null ? ` data-game="${n.id}"` : ''}>
-    <div class="text-xs text-slate-500">${fmtD(n.d)} · ${dd === 0 ? 'hoje' : dd < 0 ? `há ${ad} ${un}` : `daqui a ${ad} ${un}`}</div>
-    <div class="font-semibold mt-1">${esc(n.t1)} ${n.r ? `${n.gp} × ${n.gc}` : 'x'} ${esc(n.t2)}</div>
-    <div class="text-xs text-slate-500">${esc(n.camp)} · ${esc(n.est)}</div></div>`;
+      <div class="text-xs text-slate-500">${esc(x.camp)} · ${esc(x.est)}</div></div>`;
+  let l = pool.filter(x => dist(x) === 0), near = false;
+  if (!l.length && pool.length){ const m = Math.min(...pool.map(dist)); l = pool.filter(x => dist(x) === m); near = true; }
+  l.sort((a,b) => b.d - a.d);
+  $('hojeLabel').textContent = !pool.length ? `Nenhum jogo em ${dm}.` : near ? `Nenhum jogo em ${dm} no histórico.` : `Jogos em ${dm}`;
+  $('nesteDia').innerHTML = l.map(x => card(x, near ? `Data mais próxima no histórico (${two(x.d.getDate())}/${two(x.d.getMonth() + 1)})` : '')).join('');
 }
 
 function renderProx(){
@@ -374,7 +378,8 @@ function renderCuriosidades(){
   add('Técnico com melhor aproveitamento', rankAp(groupStats(G, x => x.tec), MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s), fk:'tec', fv:s.k})));
   const comp = groupStats(G, x => x.comp);
   add('Companhia mais frequente', [...comp].sort((a,b) => b.j - a.j).map(s => ({v:esc(s.k), s:jg(s) + ' juntos', fk:'comp', fv:s.k})));
-  add('Companhia que dá mais sorte', rankAp([...comp], MIN_JOGOS_RANKING).map(s => ({v:esc(s.k), s:apS(s), fk:'comp', fv:s.k})));
+  const sorte = comp.filter(x => x.j >= MIN_JOGOS_COMPANHIA).sort((a,b) => b.ap - a.ap || b.j - a.j); // empate: mais jogos
+  add('Companhia que dá mais sorte', sorte.length ? sorte.map(s => ({v:esc(s.k), s:apS(s), fk:'comp', fv:s.k})) : [{v:'Sem dados suficientes', s:`Nenhuma companhia com ${MIN_JOGOS_COMPANHIA} jogos ou mais`}]);
   const P = G.filter(x => x.pub > 0);
   if (P.length){
     const avg = a => Math.round(a.reduce((t,x) => t + x.pub, 0) / a.length);
@@ -508,7 +513,7 @@ document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () =>
   if (b.dataset.tab === 't2' && G.length) renderStats();
   window.scrollTo({top:0});
 }));
-$('reload').addEventListener('click', load);
+$('reload').addEventListener('click', () => { const i = $('reloadIcon'); i.classList.remove('giro'); void i.getBoundingClientRect(); i.classList.add('giro'); load(); });
 $('selAdv').addEventListener('change', showRetro);
 $('busca').addEventListener('input', e => { filtro = e.target.value.trim(); page = 0; renderTabela(); });
 $('prev').addEventListener('click', () => { page--; renderTabela(); });
